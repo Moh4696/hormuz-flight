@@ -9,6 +9,9 @@ soundtrack.
 
 ![Four frames from the flight](media/overview.jpg)
 
+**Watch it:** download the finished video from the [latest release](https://github.com/Moh4696/hormuz-flight/releases/latest)
+(275 MB master or a 25 MB share copy).
+
 This is a fork of [Leonxlnx/napali](https://github.com/Leonxlnx/napali) by Leon Lin
 ([@LexnLin](https://x.com/LexnLin)), who built the engine for his Na Pali coast flight: ray-marched terrain, GPU
 erosion, an FFT ocean, volumetric clouds and the whole offline render pipeline. All of that is his work. This repo
