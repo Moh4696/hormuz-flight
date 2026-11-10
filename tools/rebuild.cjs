@@ -12,3 +12,4 @@ rep("treeCell: num('treeCell', 6)", "treeCell: num('treeCell', 13)");
 if (fs.existsSync(d + '/tweaks.cjs')) require('./tweaks.cjs')(t, rep);
 fs.writeFileSync(d + '/v2_template.html', t);
 require('./build_v2.cjs');
+require('./hormuz_post.cjs');

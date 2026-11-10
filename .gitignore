@@ -7,3 +7,6 @@ tools/v2_template.html
 out/
 sheet_tmp/
 node_modules/
+refs/
+renders/
+.DS_Store

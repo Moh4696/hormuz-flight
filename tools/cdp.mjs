@@ -28,10 +28,13 @@ function releaseGpu() { if (lockHeld) { lockHeld = false; try { rmSync(LOCK, { r
 process.on('exit', releaseGpu);
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(sig, () => { releaseGpu(); process.exit(1); });
 
+// cross-platform Chrome teardown (the original only knew taskkill)
+function killChrome(proc) { if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F']); else { try { proc.kill('SIGKILL'); } catch {} } }
+
 export async function launch({ width = 1672, height = 941, port = 9333 + Math.floor(Math.random() * 500) } = {}) {
   await acquireGpu();
   // persistent profile => Chrome's GPU shader cache survives between runs (big win on D3D11)
-  const backend = process.env.ANGLE || 'd3d11';
+  const backend = process.env.ANGLE || (process.platform === 'win32' ? 'd3d11' : process.platform === 'darwin' ? 'metal' : 'vulkan');
   // persistent profile (GPU shader cache) only pays off for D3D11; others get a fresh temp profile
   const profile = process.env.CDP_PROFILE || (backend === 'd3d11' ? path.join(tmpdir(), 'cdp-prof-cache') : mkdtempSync(path.join(tmpdir(), 'cdp-prof-')));
   const tmpProfile = !process.env.CDP_PROFILE && backend !== 'd3d11';
@@ -42,7 +45,7 @@ export async function launch({ width = 1672, height = 941, port = 9333 + Math.fl
     `--window-size=${width},${height}`,
     '--ignore-gpu-blocklist',
     '--enable-gpu',
-    '--use-angle=' + (process.env.ANGLE || 'd3d11'),
+    '--use-angle=' + backend,
     '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
@@ -56,7 +59,7 @@ export async function launch({ width = 1672, height = 941, port = 9333 + Math.fl
   const proc = spawn(CHROME, args, { stdio: 'ignore' });
   try { setPriority(proc.pid, osConst.priority.PRIORITY_BELOW_NORMAL); } catch {}
   // children (GPU / renderer processes) get below-normal CPU priority too, once they exist
-  setTimeout(() => spawnSync('powershell', ['-NoProfile', '-Command',
+  if (process.platform === 'win32') setTimeout(() => spawnSync('powershell', ['-NoProfile', '-Command',
     `Get-CimInstance Win32_Process -Filter "ParentProcessId=${proc.pid}" | ForEach-Object { try { (Get-Process -Id $_.ProcessId).PriorityClass='BelowNormal' } catch {} }`], { stdio: 'ignore' }), 2500);
   let wsUrl;
   for (let i = 0; i < 1200; i++) {   // (merge r4: ~3 min instead of 15 s -- Chrome starts very slowly when the machine is at 100 % CPU)
@@ -67,7 +70,7 @@ export async function launch({ width = 1672, height = 941, port = 9333 + Math.fl
     } catch {}
     await new Promise((r) => setTimeout(r, 150));
   }
-  if (!wsUrl) { spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F']); releaseGpu(); if (tmpProfile) { try { rmSync(profile, { recursive: true, force: true }); } catch {} } throw new Error('chrome did not start'); }
+  if (!wsUrl) { killChrome(proc); releaseGpu(); if (tmpProfile) { try { rmSync(profile, { recursive: true, force: true }); } catch {} } throw new Error('chrome did not start'); }
   const ws = new WebSocket(wsUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   let id = 0;
@@ -128,6 +131,6 @@ export async function launch({ width = 1672, height = 941, port = 9333 + Math.fl
     const r = await send('Page.captureScreenshot', { format, quality: format === 'jpeg' ? quality : undefined, captureBeyondViewport: false });
     return Buffer.from(r.data, 'base64');
   };
-  const close = async () => { try { ws.close(); } catch {} spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F']); await new Promise((r) => setTimeout(r, +(process.env.GPU_COOLDOWN_MS || 20000))); releaseGpu(); if (tmpProfile) { try { rmSync(profile, { recursive: true, force: true }); } catch {} } };   // let the GPU process fully exit before the next launch; delete the throw-away profile (they leaked ~50-90 MB per render)
+  const close = async () => { try { ws.close(); } catch {} killChrome(proc); await new Promise((r) => setTimeout(r, +(process.env.GPU_COOLDOWN_MS || 20000))); releaseGpu(); if (tmpProfile) { try { rmSync(profile, { recursive: true, force: true }); } catch {} } };   // let the GPU process fully exit before the next launch; delete the throw-away profile (they leaked ~50-90 MB per render)
   return { send, evaluate, navigate, waitFor, screenshot, grabCanvas, grabPixels, close };
 }

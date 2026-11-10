@@ -9,7 +9,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 const args = process.argv.slice(2);
 const sheet = args[0] === '--sheet';
 let out, times, W, H, fps, spp, query;
-if (sheet) { [, out, times, W = '960', H = '540', query = ''] = args; times = times.split(',').map(Number); fps = 30; spp = 1; }
+if (sheet) { [, out, times, W = '960', H = '540', query = ''] = args; times = times.split(',').map(Number); fps = 30; spp = +(process.env.SPP || 1); }   // (hormuz) SPP env: sheet frames at final quality
 else { [out = 'drone.mp4', W = '1920', H = '1080', fps = '30', spp = '4', query = ''] = args; fps = +fps; spp = +spp; }
 W = +W; H = +H;
 
@@ -69,9 +69,10 @@ if (sheet) {
   const n = times.length, cols = Math.min(4, n), rows = Math.ceil(n / cols);
   const inputs = times.flatMap((_, k) => ['-i', `${tmp}/f${String(k).padStart(3, '0')}.png`]);
   const lay = times.map((_, k) => `${(k % cols)}*w0_${Math.floor(k / cols)}*h0`).join('|');
-  const filt = times.map((_, k) => `[${k}]scale=480:270,drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':text='t=${times[k]}':x=8:y=8:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.5[v${k}]`).join(';') +
+  const filt = times.map((_, k) => `[${k}]scale=480:270[v${k}]`).join(';') +
     ';' + times.map((_, k) => `[v${k}]`).join('') + `xstack=inputs=${n}:layout=${times.map((_, k) => `${(k % cols) * 480}_${Math.floor(k / cols) * 270}`).join('|')}:fill=black`;
-  const r = spawnSync('ffmpeg', ['-v', 'error', '-y', ...inputs, '-filter_complex', filt, out]);
+  const r = n === 1 ? spawnSync('ffmpeg', ['-v', 'error', '-y', ...inputs, out])   // (hormuz) xstack needs 2+ inputs
+    : spawnSync('ffmpeg', ['-v', 'error', '-y', ...inputs, '-filter_complex', filt, out]);
   if (r.status) console.log(r.stderr.toString());
   console.log('sheet saved', out, ((Date.now() - t0) / 1000).toFixed(0) + 's');
 } else {
